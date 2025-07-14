@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SchoolCraft Server - Register & Login</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; max-width: 400px; margin: auto; }
+  h1, h2 { text-align: center; }
+  form { display: flex; flex-direction: column; gap: 12px; }
+  label { font-weight: bold; }
+  input, select, button { padding: 8px; font-size: 1em; }
+  .hidden { display: none; }
+  #toast {
+    position: fixed; top: 20px; right: 20px;
+    background: #333; color: white; padding: 12px 20px;
+    border-radius: 5px; display: none;
+    opacity: 0.9;
+    z-index: 9999;
+  }
+  #toggleModeBtn { background: none; border: none; color: blue; text-decoration: underline; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<h1 id="formTitle">Register</h1>
+
+<form id="authForm">
+  <div id="usernameGroup">
+    <label for="minecraftUsername">Minecraft Username:</label>
+    <input type="text" id="minecraftUsername" name="minecraftUsername" placeholder="Your Minecraft username" />
+  </div>
+
+  <div>
+    <label for="email">Email Address:</label>
+    <input type="email" id="email" name="email" placeholder="you@school.edu" />
+  </div>
+
+  <div id="passwordGroup">
+    <label for="password">Password:</label>
+    <input type="password" id="password" name="password" placeholder="Create a password" />
+  </div>
+
+  <div id="gradeGroup">
+    <label for="grade">Grade/Class (Optional):</label>
+    <select id="grade" name="grade">
+      <option value="">Select your grade</option>
+      <option value="6">6th Grade</option>
+      <option value="7">7th Grade</option>
+      <option value="8">8th Grade</option>
+      <option value="9">9th Grade</option>
+      <option value="10">10th Grade</option>
+      <option value="11">11th Grade</option>
+      <option value="12">12th Grade</option>
+    </select>
+  </div>
+
+  <button type="submit" id="submitBtn">Register</button>
+</form>
+
+<p style="text-align:center; margin-top: 15px;">
+  <button id="toggleModeBtn">Already have an account? Login</button>
+</p>
+
+<div id="welcomeSection" class="hidden">
+  <h2>Welcome!</h2>
+  <p>You have successfully logged in. Welcome to the SchoolCraft Server.</p>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  const sheetDBUrl = 'https://sheetdb.io/api/v1/6nrlyxofsg4sa'; // Your SheetDB endpoint
+  let isLoginMode = false;
+
+  const formTitle = document.getElementById('formTitle');
+  const authForm = document.getElementById('authForm');
+  const usernameGroup = document.getElementById('usernameGroup');
+  const gradeGroup = document.getElementById('gradeGroup');
+  const submitBtn = document.getElementById('submitBtn');
+  const toggleModeBtn = document.getElementById('toggleModeBtn');
+  const welcomeSection = document.getElementById('welcomeSection');
+  const toast = document.getElementById('toast');
+
+  toggleModeBtn.addEventListener('click', () => {
+    isLoginMode = !isLoginMode;
+    updateFormMode();
+  });
+
+  authForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (isLoginMode) {
+      await loginUser();
+    } else {
+      await registerUser();
+    }
+  });
+
+  function updateFormMode() {
+    if (isLoginMode) {
+      formTitle.textContent = 'Login';
+      usernameGroup.classList.add('hidden');
+      gradeGroup.classList.add('hidden');
+      submitBtn.textContent = 'Login';
+      toggleModeBtn.textContent = "Don't have an account? Register";
+    } else {
+      formTitle.textContent = 'Register';
+      usernameGroup.classList.remove('hidden');
+      gradeGroup.classList.remove('hidden');
+      submitBtn.textContent = 'Register';
+      toggleModeBtn.textContent = 'Already have an account? Login';
+    }
+    clearForm();
+  }
+
+  function clearForm() {
+    authForm.reset();
+  }
+
+  function showToast(message, duration = 3000) {
+    toast.textContent = message;
+    toast.style.display = 'block';
+    setTimeout(() => {
+      toast.style.display = 'none';
+    }, duration);
+  }
+
+  async function registerUser() {
+    const minecraftUsername = document.getElementById('minecraftUsername').value.trim();
+    const email = document.getElementById('email').value.trim().toLowerCase();
+    const password = document.getElementById('password').value.trim();
+    const grade = document.getElementById('grade').value;
+
+    if (!minecraftUsername || !email || !password) {
+      showToast('Please fill in all required fields.');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Registering...';
+
+    try {
+      // Fetch existing users to check duplicates
+      const response = await fetch(sheetDBUrl);
+      if (!response.ok) throw new Error('Could not fetch users.');
+      const users = await response.json();
+
+      // Check duplicates by email or minecraft username
+      const duplicateUser = users.find(user =>
+        user.Email.toLowerCase() === email || 
+        user.MinecraftUsername.toLowerCase() === minecraftUsername.toLowerCase()
+      );
+
+      if (duplicateUser) {
+        showToast('User with this email or Minecraft username already exists.');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Register';
+        return;
+      }
+
+      // No duplicates - add new user
+      const addResponse = await fetch(sheetDBUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          data: {
+            MinecraftUsername: minecraftUsername,
+            Email: email,
+            Password: password,
+            Grade: grade
+          }
+        }),
+      });
+
+      if (!addResponse.ok) throw new Error('Failed to register user.');
+
+      showToast('Registration successful! You can now login.', 4000);
+
+      // Switch to login mode automatically
+      isLoginMode = true;
+      updateFormMode();
+
+    } catch (error) {
+      console.error(error);
+      showToast('Registration failed. Please try again.');
+    }
+
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Register';
+  }
+
+  async function loginUser() {
+    const email = document.getElementById('email').value.trim().toLowerCase();
+    const password = document.getElementById('password').value.trim();
+
+    if (!email || !password) {
+      showToast('Please fill in email and password.');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Logging in...';
+
+    try {
+      const response = await fetch(sheetDBUrl);
+      if (!response.ok) throw new Error('Could not fetch users.');
+      const users = await response.json();
+
+      // Find user with matching email and password
+      const user = users.find(u =>
+        u.Email.toLowerCase() === email &&
+        u.Password === password
+      );
+
+      if (!user) {
+        showToast('Invalid email or password.');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Login';
+        return;
+      }
+
+      // Successful login
+      showToast(`Welcome back, ${user.MinecraftUsername}!`, 4000);
+
+      // Hide form and show welcome message
+      authForm.style.display = 'none';
+      toggleModeBtn.style.display = 'none';
+      formTitle.style.display = 'none';
+      welcomeSection.classList.remove('hidden');
+
+    } catch (error) {
+      console.error(error);
+      showToast('Login failed. Please try again.');
+    }
+
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Login';
+  }
+
+  // Initialize form mode on page load
+  updateFormMode();
+</script>
+
+</body>
+</html>
